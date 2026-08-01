@@ -8,11 +8,53 @@ from typing import Any
 
 
 @dataclass(frozen=True)
+class CommandStage:
+    """One validated argv stage in a read-only command pipeline."""
+
+    argv: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class LanguageDescriptor:
+    """Data-driven language and project conventions used by the explorer."""
+
+    name: str
+    extensions: tuple[str, ...]
+    manifests: tuple[str, ...] = ()
+    source_dirs: tuple[str, ...] = ()
+    test_dirs: tuple[str, ...] = ()
+    definition_patterns: tuple[str, ...] = ()
+    entrypoint_paths: tuple[str, ...] = ()
+    test_patterns: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class NarrativeTemplate:
+    """A localized, data-driven explanation for one exploration moment."""
+
+    locale: str
+    trigger: str
+    text: str
+
+
+@dataclass(frozen=True)
 class CommandTemplate:
-    """A validated argv template for a read-only repository command."""
+    """A validated read-only command or pipeline recipe."""
 
     name: str
     argv: tuple[str, ...]
+    pipeline: tuple[CommandStage, ...] | None = None
+    kind: str = "inventory"
+    requires: tuple[str, ...] = ()
+    path_kind: str = "scope"
+    keyword_kind: str = "none"
+    weight: int = 1
+
+    @property
+    def stages(self) -> tuple[CommandStage, ...]:
+        """Return the structured stages while retaining the legacy argv field."""
+
+        return self.pipeline or (CommandStage(self.argv),)
 
 
 @dataclass(frozen=True)
@@ -25,6 +67,29 @@ class ReadonlyRules:
     max_results: int
     preambles: tuple[str, ...] = ()
     preamble_interval: int = 4
+    languages: tuple[LanguageDescriptor, ...] = ()
+    max_scan_files: int = 512
+    max_scan_bytes: int = 2_000_000
+    max_file_bytes: int = 128_000
+    max_observation_chars: int = 8_000
+    max_observation_lines: int = 32
+    max_pipeline_stages: int = 3
+    pipeline_bonus: int = 18
+    ignored_dirs: tuple[str, ...] = (
+        ".git",
+        ".hg",
+        ".svn",
+        ".venv",
+        "node_modules",
+        "target",
+        "dist",
+        "build",
+        "__pycache__",
+        ".pytest_cache",
+        ".ruff_cache",
+    )
+    narratives: tuple[NarrativeTemplate, ...] = ()
+    default_locale: str = "en"
 
 
 @dataclass(frozen=True)
@@ -42,7 +107,7 @@ class SessionLimits:
 
     max_sessions: int = 128
     max_events: int = 32
-    inference_delay_seconds: float = 0.75
+    inference_delay_seconds: float = 1.0
 
 
 @dataclass(frozen=True)

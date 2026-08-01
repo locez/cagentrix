@@ -52,7 +52,7 @@ def _content_text(value: Any) -> str:
     if isinstance(value, list):
         return " ".join(_content_text(item) for item in value)
     if isinstance(value, Mapping):
-        for key in ("text", "content", "input", "output"):
+        for key in ("text", "content", "input", "output", "input_text", "output_text"):
             if key in value:
                 return _content_text(value[key])
     return ""
@@ -347,6 +347,19 @@ class CagentrixHandler(CustomLLM):
             return
         call = decision.tool_call
         arguments = json.dumps(call.arguments, separators=(",", ":"), sort_keys=True)
+        delta: dict[str, Any] = {
+            "role": "assistant",
+            "tool_calls": [
+                {
+                    "index": 0,
+                    "id": call.id,
+                    "type": "function",
+                    "function": {"name": call.name, "arguments": arguments},
+                }
+            ],
+        }
+        if decision.preamble:
+            delta["content"] = decision.preamble
         yield ModelResponseStream(
             id=response_id,
             object="chat.completion.chunk",
@@ -355,17 +368,7 @@ class CagentrixHandler(CustomLLM):
             choices=[
                 {
                     "index": 0,
-                    "delta": {
-                        "role": "assistant",
-                        "tool_calls": [
-                            {
-                                "index": 0,
-                                "id": call.id,
-                                "type": "function",
-                                "function": {"name": call.name, "arguments": arguments},
-                            }
-                        ],
-                    },
+                    "delta": delta,
                     "finish_reason": "tool_calls",
                 }
             ],

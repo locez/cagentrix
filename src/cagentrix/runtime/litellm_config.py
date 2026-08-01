@@ -165,6 +165,29 @@ def write_opencode_config(directory: Path, profile: Profile, api_base: str) -> P
     config = {
         "$schema": "https://opencode.ai/config.json",
         "model": f"cagentrix/{model}",
+        "permission": {
+            "edit": "deny",
+            "external_directory": "deny",
+            "bash": {
+                "*": "deny",
+                "rg *": "allow",
+                "grep *": "allow",
+                "sed -n *": "allow",
+                "find *": "allow",
+                "sort *": "allow",
+                "head *": "allow",
+                "ps -ef*": "allow",
+                "git --no-optional-locks status *": "allow",
+                "git --no-pager log *": "allow",
+                "git --no-pager diff *": "allow",
+                "git ls-files *": "allow",
+                "git grep *": "allow",
+                "sed *-i*": "deny",
+                "sed *--in-place*": "deny",
+                "find *-exec*": "deny",
+                "find *-delete*": "deny",
+            },
+        },
         "provider": {
             "cagentrix": {
                 "npm": "@ai-sdk/openai-compatible",

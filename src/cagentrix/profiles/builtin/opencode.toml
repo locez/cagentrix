@@ -30,4 +30,4 @@ limit = ["limit", "max_results", "count"]
 [session]
 max_sessions = 128
 max_events = 32
-inference_delay_seconds = 0.75
+inference_delay_seconds = 1.0

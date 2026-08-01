@@ -30,6 +30,8 @@ args = [
     "features.remote_compaction_v2=false",
     "-c",
     "model_catalog_json=\"{model_catalog_json}\"",
+    "-s",
+    "read-only",
 ]
 base_url_env = "OPENAI_BASE_URL"
 api_key_env = "OPENAI_API_KEY"
@@ -49,4 +51,4 @@ limit = ["limit", "max_results", "count"]
 [session]
 max_sessions = 128
 max_events = 32
-inference_delay_seconds = 0.75
+inference_delay_seconds = 1.0

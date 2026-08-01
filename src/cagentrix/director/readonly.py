@@ -9,7 +9,8 @@ from pathlib import Path
 from typing import Any
 
 from cagentrix.director.base import DirectorDecision, ToolCall, ToolSpec, TurnRequest
-from cagentrix.director.command_generator import ReadonlyCommandGenerator
+from cagentrix.director.command_generator import GeneratedCommand, ReadonlyCommandGenerator
+from cagentrix.director.exploration import observation_for_call
 from cagentrix.director.session import SessionStore
 from cagentrix.profiles.models import Profile, ReadonlyRules
 
@@ -90,6 +91,15 @@ class ReadonlyDirector:
         if state.pending_call_id is not None and _has_tool_result(
             request.history, state.pending_call_id
         ):
+            observation = observation_for_call(
+                request.history,
+                state.pending_call_id,
+                self.root,
+                max_chars=self.rules.max_observation_chars,
+                max_lines=self.rules.max_observation_lines,
+            )
+            if observation is not None:
+                state.exploration.absorb(observation)
             self.sessions.clear_pending(request.session_id)
             state = self.sessions.state_for(request.session_id)
 
@@ -103,19 +113,28 @@ class ReadonlyDirector:
                 preamble=state.pending_preamble,
             )
 
-        turn = state.turns
-        generated = self.command_generator.generate(turn)
-        candidate = next((tool for tool in request.tools if self._is_allowed(tool.name)), None)
+        candidate = self._select_candidate(request.tools)
         if candidate is None:
             return DirectorDecision(
                 tool_call=None,
                 stop_reason="No client-declared read-only function tool is available.",
             )
+        turn = state.turns
+        generated = self.command_generator.generate(
+            turn,
+            history=request.history,
+            state=state.exploration,
+        )
         if self._is_shell(candidate.name):
             arguments = self._shell_arguments(candidate, generated.command)
         else:
-            arguments = self._function_arguments(candidate, turn, generated.command)
+            arguments = self._function_arguments(candidate, turn, generated)
         call_id = self._call_id(request.session_id, turn)
+        state.exploration.remember_action(
+            generated.signature,
+            template_name=generated.template_name,
+        )
+        state.exploration.last_kind = generated.action_kind
         self.sessions.record_call(
             request.session_id,
             call_id=call_id,
@@ -131,6 +150,12 @@ class ReadonlyDirector:
     def _is_allowed(self, name: str) -> bool:
         return any(pattern.search(name) for pattern in self._allowed)
 
+    def _select_candidate(self, tools: Iterable[ToolSpec]) -> ToolSpec | None:
+        allowed = [tool for tool in tools if self._is_allowed(tool.name)]
+        return next((tool for tool in allowed if self._is_shell(tool.name)), None) or (
+            allowed[0] if allowed else None
+        )
+
     def _is_shell(self, name: str) -> bool:
         return any(pattern.search(name) for pattern in self._shell)
 
@@ -141,7 +166,12 @@ class ReadonlyDirector:
     def _shell_arguments(self, tool: ToolSpec, command: str) -> dict[str, str]:
         return {self._field_for(tool, "command", fallback="command"): command}
 
-    def _function_arguments(self, tool: ToolSpec, turn: int, command: str) -> dict[str, Any]:
+    def _function_arguments(
+        self,
+        tool: ToolSpec,
+        turn: int,
+        generated: GeneratedCommand,
+    ) -> dict[str, Any]:
         schema = tool.parameters
         properties = schema.get("properties", {})
         if not isinstance(properties, Mapping):
@@ -153,7 +183,7 @@ class ReadonlyDirector:
             semantic = self._semantic_field(field_name)
             if semantic is None:
                 continue
-            arguments[field_name] = self._value_for(semantic, field_schema, turn, command)
+            arguments[field_name] = self._value_for(semantic, field_schema, turn, generated)
         return arguments
 
     def _field_for(self, tool: ToolSpec, semantic: str, *, fallback: str) -> str:
@@ -172,16 +202,25 @@ class ReadonlyDirector:
                 return semantic
         return None
 
-    def _value_for(self, semantic: str, field_schema: Any, turn: int, command: str) -> Any:
+    def _value_for(
+        self,
+        semantic: str,
+        field_schema: Any,
+        turn: int,
+        generated: GeneratedCommand,
+    ) -> Any:
         schema = field_schema if isinstance(field_schema, Mapping) else {}
         if "default" in schema:
             return schema["default"]
         if semantic == "command":
-            return command
+            return generated.command
         if semantic == "pattern":
-            return self.rules.patterns[turn % len(self.rules.patterns)]
+            if generated.keyword:
+                return generated.keyword
+            patterns = self.rules.patterns or ("project",)
+            return patterns[turn % len(patterns)]
         if semantic == "path":
-            return "."
+            return generated.path or "."
         if semantic == "limit":
             return self.rules.max_results
         kind = schema.get("type")

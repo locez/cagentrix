@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from cagentrix.profiles.loader import load_profile, load_rules
 
 ROOT = Path(__file__).parents[1]
@@ -14,11 +16,23 @@ def test_builtin_profiles_and_rule_data_load() -> None:
     assert codex.client.client_model == "gpt-5.6-luna"
     assert codex.context_window == 258400
     assert codex.auto_compact_token_limit == 220000
-    assert codex.session_limits.inference_delay_seconds == 0.75
+    assert codex.session_limits.inference_delay_seconds == 1.0
     assert any("{api_base}" in argument for argument in codex.client.args)
     assert rules.templates[0].argv[0] == "rg"
-    assert {template.argv[0] for template in rules.templates} >= {"find", "grep", "rg", "sed"}
+    assert {stage.argv[0] for template in rules.templates for stage in template.stages} >= {
+        "find",
+        "grep",
+        "git",
+        "ps",
+        "rg",
+        "sed",
+        "sort",
+    }
     assert rules.preambles
+    assert {language.name for language in rules.languages} >= {"python", "rust", "node"}
+    assert {narrative.locale for narrative in rules.narratives} >= {"en", "zh"}
+    assert any(len(template.stages) > 1 for template in rules.templates)
+    assert rules.pipeline_bonus == 18
 
 
 def test_project_profile_overlay_preserves_data_driven_client_config(tmp_path: Path) -> None:
@@ -78,3 +92,105 @@ max_events = 2
     assert profile.name == "reader"
     assert profile.client.command == "reader-ui"
     assert profile.session_limits.max_events == 2
+
+
+def test_project_pipeline_cannot_add_an_execution_stage(tmp_path: Path) -> None:
+    config_dir = tmp_path / ".cagentrix"
+    config_dir.mkdir()
+    (config_dir / "readonly_rules.toml").write_text(
+        """
+[rule_sets.default]
+patterns = []
+
+[[rule_sets.default.templates]]
+name = "unsafe-pipeline"
+pipeline = [["rg", "-n", "signal", "."], ["sh", "-c", "echo signal"]]
+""",
+        encoding="utf-8",
+    )
+
+    profile = load_profile("codex", tmp_path)
+    with pytest.raises(ValueError, match="must start with a validated read-only command"):
+        load_rules(profile, tmp_path)
+
+
+def test_project_rules_reject_path_escape_and_sed_execution(tmp_path: Path) -> None:
+    config_dir = tmp_path / ".cagentrix"
+    config_dir.mkdir()
+    rules_path = config_dir / "readonly_rules.toml"
+    rules_path.write_text(
+        """
+[rule_sets.default]
+patterns = []
+
+[[rule_sets.default.templates]]
+name = "absolute-path"
+argv = ["sed", "-n", "1,2p", "/etc/passwd"]
+""",
+        encoding="utf-8",
+    )
+    profile = load_profile("codex", tmp_path)
+    with pytest.raises(ValueError, match="absolute paths"):
+        load_rules(profile, tmp_path)
+
+    rules_path.write_text(
+        """
+[rule_sets.default]
+patterns = []
+
+[[rule_sets.default.templates]]
+name = "sed-execution"
+argv = ["sed", "-n", "s/signal/output/e", "."]
+""",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="sed file or execution"):
+        load_rules(profile, tmp_path)
+
+    rules_path.write_text(
+        """
+[rule_sets.default]
+patterns = []
+
+[[rule_sets.default.templates]]
+name = "sort-output"
+argv = ["sort", "-o", "result.txt", "."]
+""",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="sort output file"):
+        load_rules(profile, tmp_path)
+
+
+def test_project_rules_reject_unsafe_git_and_ps_options(tmp_path: Path) -> None:
+    config_dir = tmp_path / ".cagentrix"
+    config_dir.mkdir()
+    rules_path = config_dir / "readonly_rules.toml"
+    rules_path.write_text(
+        """
+[rule_sets.default]
+patterns = []
+
+[[rule_sets.default.templates]]
+name = "git-reset"
+argv = ["git", "reset", "--hard"]
+""",
+        encoding="utf-8",
+    )
+    profile = load_profile("codex", tmp_path)
+    with pytest.raises(ValueError, match="read-only git subcommand"):
+        load_rules(profile, tmp_path)
+
+    rules_path.write_text(
+        """
+[rule_sets.default]
+patterns = []
+
+[[rule_sets.default.templates]]
+name = "ps-command"
+argv = ["ps", "-x"]
+""",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="unsupported ps option"):
+        load_rules(profile, tmp_path)

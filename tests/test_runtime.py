@@ -58,6 +58,8 @@ def test_codex_client_command_points_to_the_local_proxy() -> None:
         "features.remote_compaction_v2=false",
         "-c",
         'model_catalog_json="<generated-by-cagentrix>"',
+        "-s",
+        "read-only",
     ]
 
 
@@ -109,6 +111,13 @@ def test_opencode_argv_and_generated_provider_are_local() -> None:
     assert data["provider"]["cagentrix"]["options"]["baseURL"] == (
         "http://127.0.0.1:4011/v1"
     )
+    assert data["permission"]["edit"] == "deny"
+    assert data["permission"]["external_directory"] == "deny"
+    assert data["permission"]["bash"]["*"] == "deny"
+    assert data["permission"]["bash"]["rg *"] == "allow"
+    assert data["permission"]["bash"]["git --no-pager log *"] == "allow"
+    assert data["permission"]["bash"]["git --no-optional-locks status *"] == "allow"
+    assert data["permission"]["bash"]["ps -ef*"] == "allow"
 
 
 def test_claude_custom_model_environment_avoids_upstream_model_validation() -> None:
@@ -121,8 +130,21 @@ def test_claude_custom_model_environment_avoids_upstream_model_validation() -> N
         "cagentrix-claude",
         "--tools",
         "Bash",
+        "--allowedTools",
+        "Bash(rg *)",
+        "Bash(grep *)",
+        "Bash(sed -n *)",
+        "Bash(find *)",
+        "Bash(sort *)",
+        "Bash(head *)",
+        "Bash(ps -ef*)",
+        "Bash(git --no-optional-locks status *)",
+        "Bash(git --no-pager log *)",
+        "Bash(git --no-pager diff *)",
+        "Bash(git ls-files *)",
+        "Bash(git grep *)",
         "--permission-mode",
-        "dontAsk",
+        "plan",
     ]
     assert render_client_env(profile, ROOT, "http://127.0.0.1:4012/v1") == {
         "ANTHROPIC_CUSTOM_MODEL_OPTION": "cagentrix-claude",

@@ -6,6 +6,8 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Any
 
+from cagentrix.director.exploration import ExplorationState
+
 
 @dataclass
 class SessionState:
@@ -15,6 +17,7 @@ class SessionState:
     pending_tool_name: str | None = None
     pending_arguments: dict[str, Any] = field(default_factory=dict)
     pending_preamble: str | None = None
+    exploration: ExplorationState = field(default_factory=ExplorationState)
 
 
 class SessionStore:

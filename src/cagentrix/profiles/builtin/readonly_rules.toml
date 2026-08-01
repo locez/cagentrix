@@ -1,49 +1,407 @@
-# The command policy is data, so additions and audits do not require Python changes.
-# Every command is executed by the client in the current project directory.
+# Exploration policy is data. Language descriptors add evidence only; they never
+# add shell capabilities. Every command still comes from a validated read-only stage.
+
+[[languages]]
+name = "python"
+extensions = ["py"]
+manifests = ["pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "Pipfile"]
+source_dirs = ["src", "lib", "app"]
+test_dirs = ["test", "tests"]
+definition_patterns = [
+    '(?m)^\s*(?:async\s+)?def\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)',
+    '(?m)^\s*class\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)',
+]
+entrypoint_paths = ["__main__.py", "main.py", "cli.py"]
+test_patterns = ["test_*.py", "*_test.py"]
+
+[[languages]]
+name = "rust"
+extensions = ["rs"]
+manifests = ["Cargo.toml"]
+source_dirs = ["src"]
+test_dirs = ["tests", "benches"]
+definition_patterns = [
+    '(?m)^\s*(?:pub\s+)?(?:async\s+)?fn\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)',
+    '(?m)^\s*(?:pub\s+)?(?:struct|enum|trait|type)\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)',
+]
+entrypoint_paths = ["src/main.rs", "src/lib.rs"]
+test_patterns = ["*_test.rs"]
+
+[[languages]]
+name = "node"
+extensions = ["js", "jsx", "ts", "tsx", "mjs", "cjs"]
+manifests = ["package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml"]
+source_dirs = ["src", "lib", "app"]
+test_dirs = ["test", "tests", "__tests__"]
+definition_patterns = [
+    '(?m)^\s*(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+(?P<name>[A-Za-z_$][A-Za-z0-9_$]*)',
+    '(?m)^\s*(?:export\s+)?class\s+(?P<name>[A-Za-z_$][A-Za-z0-9_$]*)',
+    '(?m)^\s*(?:export\s+)?(?:const|let|var)\s+(?P<name>[A-Za-z_$][A-Za-z0-9_$]*)',
+]
+entrypoint_paths = ["index.js", "index.ts", "src/index.ts"]
+test_patterns = ["*.test.*", "*.spec.*"]
+
+[[languages]]
+name = "go"
+extensions = ["go"]
+manifests = ["go.mod", "go.work"]
+source_dirs = ["cmd", "internal", "pkg"]
+test_dirs = ["test", "tests"]
+definition_patterns = [
+    '(?m)^\s*func\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)',
+    '(?m)^\s*type\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)',
+]
+entrypoint_paths = ["main.go"]
+test_patterns = ["*_test.go"]
+
+[[languages]]
+name = "jvm"
+extensions = ["java", "kt", "kts", "scala"]
+manifests = ["pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle"]
+source_dirs = ["src/main", "src"]
+test_dirs = ["src/test", "test", "tests"]
+definition_patterns = [
+    '(?m)^\s*(?:public\s+|private\s+|protected\s+)?(?:class|interface|enum|object)\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)',
+    '(?m)^\s*(?:public\s+|private\s+|protected\s+)?(?:fun|def)\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)',
+]
+entrypoint_paths = ["src/main", "Application.java", "Application.kt"]
+test_patterns = ["*Test.java", "*Tests.java", "*Test.kt", "*.spec.*"]
+
+[[languages]]
+name = "c-family"
+extensions = ["c", "h", "cc", "cpp", "cxx", "hpp"]
+manifests = ["CMakeLists.txt", "meson.build", "Makefile"]
+source_dirs = ["src", "include"]
+test_dirs = ["test", "tests"]
+definition_patterns = [
+    '(?m)^\s*(?:static\s+|inline\s+|const\s+)?[A-Za-z_][A-Za-z0-9_:<>*&\s]+\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*\(',
+    '(?m)^\s*(?:class|struct|enum)\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)',
+]
+entrypoint_paths = ["main.c", "main.cpp"]
+test_patterns = ["*_test.cpp", "*_test.cc"]
+
+[[languages]]
+name = "generic-source"
+extensions = [
+    "asm",
+    "bash",
+    "cs",
+    "dart",
+    "ex",
+    "exs",
+    "fs",
+    "fsx",
+    "h",
+    "hrl",
+    "hs",
+    "jl",
+    "lhs",
+    "lua",
+    "m",
+    "mm",
+    "nim",
+    "php",
+    "pl",
+    "r",
+    "rb",
+    "s",
+    "sh",
+    "sol",
+    "sql",
+    "swift",
+    "vue",
+    "zig",
+]
+source_dirs = ["src", "lib", "app"]
+test_dirs = ["test", "tests", "spec", "__tests__"]
+test_patterns = ["*_test.*", "*.test.*", "*.spec.*"]
 
 [rule_sets.default]
-patterns = [
-    "Cagentrix|cagentrix",
-    "readonly|tool|profile",
-    "pyproject|README|toml",
-    "Python|LiteLLM|Responses",
-    "session|history|previous_response_id",
-    "function_call|tool_use|ModelResponse",
-    "rg|grep|find|sed",
-    "client|server|proxy",
-]
+patterns = []
 max_results = 12
-preamble_interval = 4
-preambles = [
-    "让我先看看项目结构，执行只读命令：{command}",
-    "我再核对一下相关配置，执行只读命令：{command}",
-    "我继续检查这条调用链，执行只读命令：{command}",
+max_pipeline_stages = 3
+pipeline_bonus = 18
+max_scan_files = 512
+max_scan_bytes = 2000000
+max_file_bytes = 128000
+max_observation_chars = 8000
+max_observation_lines = 32
+preamble_interval = 3
+default_locale = "en"
+ignored_dirs = [
+    ".git",
+    ".hg",
+    ".svn",
+    ".venv",
+    "node_modules",
+    "target",
+    "dist",
+    "build",
+    "__pycache__",
+    ".pytest_cache",
+    ".ruff_cache",
+]
+
+# Legacy fallback for project overlays that still expect the old field.
+preambles = ["{reason}: {command}"]
+
+[[rule_sets.default.narratives]]
+locale = "en"
+trigger = "inventory"
+text = "I'll first map the project's file and directory layout: {command}"
+
+[[rule_sets.default.narratives]]
+locale = "en"
+trigger = "metadata"
+text = "I'll identify the project's build and runtime metadata before following code references."
+
+[[rule_sets.default.narratives]]
+locale = "en"
+trigger = "definition"
+text = "I'll locate the real definition of {keyword} in {path}: {command}"
+
+[[rule_sets.default.narratives]]
+locale = "en"
+trigger = "reference"
+text = "The next useful step is to follow references to {keyword}: {command}"
+
+[[rule_sets.default.narratives]]
+locale = "en"
+trigger = "focused_inspection"
+text = "I found a concrete lead, so I'll inspect the relevant part of {path}."
+
+[[rule_sets.default.narratives]]
+locale = "en"
+trigger = "source_test_pair"
+text = "I'll cross-check the source and test sides of this lead: {command}"
+
+[[rule_sets.default.narratives]]
+locale = "en"
+trigger = "cross_check"
+text = "I'll verify the same signal across the repository boundaries: {command}"
+
+[[rule_sets.default.narratives]]
+locale = "en"
+trigger = "any"
+text = "I'll continue with the strongest read-only lead: {command}"
+
+[[rule_sets.default.narratives]]
+locale = "zh"
+trigger = "inventory"
+text = "我先确认项目的文件和目录布局：{command}"
+
+[[rule_sets.default.narratives]]
+locale = "zh"
+trigger = "metadata"
+text = "我先核对项目的构建和运行配置，再继续追踪代码引用。"
+
+[[rule_sets.default.narratives]]
+locale = "zh"
+trigger = "definition"
+text = "我先定位 {path} 中真实的 {keyword} 定义：{command}"
+
+[[rule_sets.default.narratives]]
+locale = "zh"
+trigger = "reference"
+text = "下一步继续追踪 {keyword} 的实际引用：{command}"
+
+[[rule_sets.default.narratives]]
+locale = "zh"
+trigger = "focused_inspection"
+text = "刚才已经找到具体线索，我先查看 {path} 的相关实现。"
+
+[[rule_sets.default.narratives]]
+locale = "zh"
+trigger = "source_test_pair"
+text = "我再把源码和测试两侧的线索对应起来：{command}"
+
+[[rule_sets.default.narratives]]
+locale = "zh"
+trigger = "cross_check"
+text = "我在源码、测试和配置之间做一次只读交叉核对：{command}"
+
+[[rule_sets.default.narratives]]
+locale = "zh"
+trigger = "any"
+text = "我继续沿着当前最有价值的线索检查：{command}"
+
+[[rule_sets.default.templates]]
+name = "inventory-files"
+kind = "inventory"
+path_kind = "scope"
+weight = 10
+pipeline = [
+    ["rg", "--files", "{scope}"],
+    ["head", "-n", "80"],
 ]
 
 [[rule_sets.default.templates]]
-name = "list-repository-files"
-argv = ["rg", "--files", "--hidden", "--glob", "!.git", "."]
+name = "discover-files-with-find"
+kind = "inventory"
+path_kind = "scope"
+weight = 4
+argv = ["find", "{scope}", "-maxdepth", "3", "-type", "f", "-not", "-path", "*/.git/*", "-print"]
 
 [[rule_sets.default.templates]]
-name = "find-source-files"
-argv = ["find", ".", "-maxdepth", "3", "-type", "f", "-not", "-path", "./.git/*", "-print"]
+name = "sorted-file-inventory"
+kind = "inventory"
+path_kind = "scope"
+weight = 11
+pipeline = [
+    ["find", "{scope}", "-maxdepth", "3", "-type", "f", "-not", "-path", "*/.git/*", "-print"],
+    ["sort"],
+    ["head", "-n", "80"],
+]
 
 [[rule_sets.default.templates]]
-name = "inspect-project-metadata"
-argv = ["sed", "-n", "1,100p", "pyproject.toml"]
+name = "git-tracked-files"
+kind = "inventory"
+requires = ["git"]
+path_kind = "scope"
+weight = 10
+pipeline = [
+    ["git", "ls-files", "--", "{scope}"],
+    ["sort"],
+    ["head", "-n", "80"],
+]
 
 [[rule_sets.default.templates]]
-name = "search-project-name"
-argv = ["rg", "--hidden", "--glob", "!.git", "--glob", "!*.pyc", "-n", "--max-count", "{max_results}", "{pattern}", "."]
+name = "git-working-tree-summary"
+kind = "metadata"
+requires = ["git"]
+path_kind = "scope"
+weight = 11
+argv = ["git", "--no-optional-locks", "status", "--short", "--branch", "--untracked-files=no"]
 
 [[rule_sets.default.templates]]
-name = "inspect-readme"
-argv = ["sed", "-n", "1,100p", "README.md"]
+name = "git-history-for-file"
+kind = "metadata"
+requires = ["git", "source_files"]
+path_kind = "source_file"
+weight = 9
+argv = ["git", "--no-pager", "log", "--oneline", "--decorate=no", "-n", "12", "--", "{path}"]
 
 [[rule_sets.default.templates]]
-name = "search-readonly-policy"
-argv = ["rg", "--hidden", "--glob", "!.git", "--glob", "!*.pyc", "-n", "--max-count", "{max_results}", "{pattern}", "."]
+name = "git-diff-summary"
+kind = "focused_inspection"
+requires = ["git", "source_files"]
+path_kind = "source_file"
+weight = 8
+argv = ["git", "--no-pager", "diff", "--no-ext-diff", "--stat", "--", "{path}"]
 
 [[rule_sets.default.templates]]
-name = "grep-project-metadata"
-argv = ["grep", "-R", "-n", "--exclude-dir=.git", "--exclude=*.pyc", "--", "{pattern}", "."]
+name = "inspect-project-manifest"
+kind = "metadata"
+requires = ["manifests"]
+path_kind = "manifest"
+weight = 9
+argv = ["sed", "-n", "{line_range}", "{path}"]
+
+[[rule_sets.default.templates]]
+name = "locate-definitions"
+kind = "definition"
+requires = ["source_files", "identifiers"]
+path_kind = "source_scope"
+keyword_kind = "definition"
+weight = 9
+argv = ["rg", "-n", "{keyword}", "{scope}"]
+
+[[rule_sets.default.templates]]
+name = "inspect-entrypoint"
+kind = "entrypoint"
+requires = ["entrypoints"]
+path_kind = "entrypoint"
+weight = 8
+argv = ["sed", "-n", "{line_range}", "{path}"]
+
+[[rule_sets.default.templates]]
+name = "trace-references"
+kind = "reference"
+requires = ["identifiers"]
+path_kind = "source_scope"
+keyword_kind = "reference"
+weight = 8
+argv = ["rg", "-n", "{keyword}", "{scope}"]
+
+[[rule_sets.default.templates]]
+name = "git-reference-cross-check"
+kind = "reference"
+requires = ["git", "identifiers"]
+path_kind = "source_scope"
+keyword_kind = "reference"
+weight = 8
+argv = ["git", "grep", "-n", "-e", "{keyword}", "--", "{scope}"]
+
+[[rule_sets.default.templates]]
+name = "scope-by-language"
+kind = "reference"
+requires = ["language", "identifiers"]
+path_kind = "source_scope"
+keyword_kind = "reference"
+weight = 6
+argv = ["rg", "-n", "--glob", "{glob}", "{keyword}", "{scope}"]
+
+[[rule_sets.default.templates]]
+name = "bound-reference-results"
+kind = "focused_inspection"
+requires = ["identifiers"]
+path_kind = "hit_file"
+keyword_kind = "reference"
+weight = 7
+pipeline = [
+    ["sed", "-n", "{line_range}", "{path}"],
+    ["rg", "-n", "{keyword}"],
+    ["head", "-n", "{max_results}"],
+]
+
+[[rule_sets.default.templates]]
+name = "inspect-evidence-file"
+kind = "focused_inspection"
+requires = ["identifiers"]
+path_kind = "hit_file"
+keyword_kind = "focused"
+weight = 8
+argv = ["sed", "-n", "{line_range}", "{path}"]
+
+[[rule_sets.default.templates]]
+name = "cross-check-tests"
+kind = "source_test_pair"
+requires = ["test_files", "identifiers"]
+path_kind = "test_scope"
+keyword_kind = "reference"
+weight = 8
+argv = ["rg", "-n", "{keyword}", "{scope}"]
+
+[[rule_sets.default.templates]]
+name = "grep-cross-check"
+kind = "cross_check"
+requires = ["identifiers"]
+path_kind = "scope"
+keyword_kind = "reference"
+weight = 4
+pipeline = [
+    ["grep", "-r", "-n", "--", "{keyword}", "{scope}"],
+    ["sed", "-n", "1,80p"],
+]
+
+[[rule_sets.default.templates]]
+name = "inspect-process-context"
+kind = "cross_check"
+requires = ["identifiers"]
+path_kind = "scope"
+keyword_kind = "process"
+weight = 8
+pipeline = [
+    ["ps", "-ef"],
+    ["rg", "-n", "{keyword}"],
+    ["head", "-n", "{max_results}"],
+]
+
+[[rule_sets.default.templates]]
+name = "inspect-documentation-signal"
+kind = "cross_check"
+requires = ["identifiers"]
+path_kind = "doc_file"
+keyword_kind = "reference"
+weight = 3
+argv = ["rg", "-n", "{keyword}", "{path}"]

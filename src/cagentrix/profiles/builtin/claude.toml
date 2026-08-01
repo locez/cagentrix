@@ -10,7 +10,28 @@ rule_set = "default"
 
 [client]
 command = "claude"
-args = ["--bare", "--model", "{model}", "--tools", "Bash", "--permission-mode", "dontAsk"]
+args = [
+    "--bare",
+    "--model",
+    "{model}",
+    "--tools",
+    "Bash",
+    "--allowedTools",
+    "Bash(rg *)",
+    "Bash(grep *)",
+    "Bash(sed -n *)",
+    "Bash(find *)",
+    "Bash(sort *)",
+    "Bash(head *)",
+    "Bash(ps -ef*)",
+    "Bash(git --no-optional-locks status *)",
+    "Bash(git --no-pager log *)",
+    "Bash(git --no-pager diff *)",
+    "Bash(git ls-files *)",
+    "Bash(git grep *)",
+    "--permission-mode",
+    "plan",
+]
 base_url_env = "ANTHROPIC_BASE_URL"
 base_url_template = "{server_url}"
 api_key_env = "ANTHROPIC_API_KEY"
@@ -35,4 +56,4 @@ limit = ["limit", "max_results", "count"]
 [session]
 max_sessions = 128
 max_events = 32
-inference_delay_seconds = 0.75
+inference_delay_seconds = 1.0

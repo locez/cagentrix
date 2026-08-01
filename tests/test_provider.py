@@ -52,6 +52,17 @@ def test_handler_returns_model_response_with_one_tool_call() -> None:
     assert tool_calls[0]["function"]["name"] == "exec_command"
 
 
+def test_handler_uses_chinese_preamble_for_a_chinese_request() -> None:
+    response = _handler().completion(
+        model="cagentrix-codex",
+        messages=[{"role": "user", "content": "请检查项目结构"}],
+        tools=_tools(),
+    )
+
+    content = response.model_dump()["choices"][0]["message"]["content"]
+    assert content and content.startswith("我")
+
+
 def test_handler_simulates_configured_inference_delay(monkeypatch) -> None:
     delays: list[float] = []
     monkeypatch.setattr(handler_module.time, "sleep", delays.append)
@@ -82,11 +93,15 @@ def test_sync_async_and_streaming_handler_paths() -> None:
     assert len(sync_chunks) == 1
     async_data = async_chunks[0].model_dump()
     sync_data = sync_chunks[0].model_dump()
+    assert async_data["choices"][0]["delta"]["content"]
+    assert sync_data["choices"][0]["delta"]["content"]
     async_tool_use = async_data["choices"][0]["delta"]["tool_calls"][0]
     sync_tool_use = sync_data["choices"][0]["delta"]["tool_calls"][0]
     assert async_tool_use["function"]["name"] == "exec_command"
     assert sync_tool_use["function"]["name"] == "exec_command"
-    assert json.loads(async_tool_use["function"]["arguments"])["command"].startswith("rg ")
+    command = json.loads(async_tool_use["function"]["arguments"])["command"]
+    assert command.startswith(("find ", "rg ", "grep ", "sed "))
+    assert " | " in command
     assert async_data["usage"]["prompt_tokens"] > 0
 
 

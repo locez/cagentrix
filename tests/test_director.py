@@ -44,10 +44,51 @@ def test_director_returns_one_declared_readonly_tool() -> None:
     assert len([decision.tool_call]) == 1
     command = decision.tool_call.arguments["command"]
     assert isinstance(command, str)
-    assert command.startswith(("rg ", "grep "))
+    assert command.startswith(("find ", "rg ", "grep "))
     assert decision.preamble is not None
     assert command in decision.preamble
     assert not any(marker in command for marker in (";", "&&", "||", "`", "$", ">", "<"))
+
+
+def test_director_prefers_shell_over_native_search_tools() -> None:
+    director = _director()
+    tools = normalize_tools(
+        [
+            {
+                "type": "function",
+                "function": {
+                    "name": "Grep",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "pattern": {"type": "string"},
+                            "path": {"type": "string"},
+                        },
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "Read",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"file_path": {"type": "string"}},
+                    },
+                },
+            },
+            _shell_tool(),
+        ]
+    )
+
+    decision = director.next_action(
+        TurnRequest(model="cagentrix-codex", tools=tools, session_id="shell-preferred")
+    )
+
+    assert decision.tool_call is not None
+    assert decision.tool_call.name == "exec_command"
+    assert decision.tool_call.arguments["command"]
+    assert decision.preamble is not None
 
 
 def test_native_shell_without_name_is_normalized_and_allowed() -> None:

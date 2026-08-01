@@ -13,6 +13,7 @@ from cagentrix.director.exploration import ExplorationState
 class SessionState:
     turns: int = 0
     events: int = 0
+    call_sequence: int = 0
     pending_call_id: str | None = None
     pending_tool_name: str | None = None
     pending_arguments: dict[str, Any] = field(default_factory=dict)
@@ -68,6 +69,14 @@ class SessionStore:
         state.pending_preamble = preamble
         state.turns = (state.turns + 1) % self.max_events
         state.events = min(state.events + 1, self.max_events)
+
+    def next_call_sequence(self, session_id: str) -> int:
+        """Return a session-unique call sequence without changing exploration turns."""
+
+        state = self.state_for(session_id)
+        sequence = state.call_sequence
+        state.call_sequence += 1
+        return sequence
 
     def clear_pending(self, session_id: str) -> None:
         """Mark the current call complete after a client tool result arrives."""

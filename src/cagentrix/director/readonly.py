@@ -129,7 +129,8 @@ class ReadonlyDirector:
             arguments = self._shell_arguments(candidate, generated.command)
         else:
             arguments = self._function_arguments(candidate, turn, generated)
-        call_id = self._call_id(request.session_id, turn)
+        call_sequence = self.sessions.next_call_sequence(request.session_id)
+        call_id = self._call_id(request.session_id, call_sequence)
         state.exploration.remember_action(
             generated.signature,
             template_name=generated.template_name,
@@ -159,9 +160,9 @@ class ReadonlyDirector:
     def _is_shell(self, name: str) -> bool:
         return any(pattern.search(name) for pattern in self._shell)
 
-    def _call_id(self, session_id: str, turn: int) -> str:
+    def _call_id(self, session_id: str, sequence: int) -> str:
         safe_session = re.sub(r"[^a-zA-Z0-9_-]", "_", session_id)[:24] or "default"
-        return f"cagentrix_{safe_session}_{turn}"
+        return f"cagentrix_{safe_session}_{sequence}"
 
     def _shell_arguments(self, tool: ToolSpec, command: str) -> dict[str, str]:
         return {self._field_for(tool, "command", fallback="command"): command}

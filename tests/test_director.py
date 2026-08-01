@@ -141,6 +141,33 @@ def test_tool_result_history_advances_bounded_session() -> None:
     assert director.sessions.size == 1
 
 
+def test_tool_ids_stay_unique_after_bounded_turn_counter_wraps() -> None:
+    director = _director()
+    tools = normalize_tools([_shell_tool()])
+    history: tuple[dict[str, object], ...] = ()
+    call_ids: list[str] = []
+
+    for _ in range(director.sessions.max_events + 8):
+        decision = director.next_action(
+            TurnRequest(
+                model="cagentrix-codex",
+                tools=tools,
+                history=history,
+                session_id="long-loop",
+            )
+        )
+        assert decision.tool_call is not None
+        call_id = decision.tool_call.id
+        call_ids.append(call_id)
+        history = (
+            {"role": "assistant", "tool_calls": [{"id": call_id}]},
+            {"role": "tool", "tool_call_id": call_id, "content": "files"},
+        )
+
+    assert len(call_ids) == len(set(call_ids))
+    assert call_ids[director.sessions.max_events] == "cagentrix_long-loop_32"
+
+
 def test_pending_call_is_replayed_until_a_tool_result_arrives() -> None:
     director = _director()
     tools = normalize_tools([_shell_tool()])

@@ -1,0 +1,158 @@
+# Cagentrix
+
+Cagentrix is a deterministic fake LLM API server for coding agents. It never calls
+a real model. LiteLLM remains the HTTP and protocol adapter, while a LiteLLM
+`CustomLLM` handler asks a protocol-neutral director for exactly one safe, read-only
+tool call per turn.
+
+## Install and run
+
+```bash
+uv sync
+uv run cagentrix codex
+```
+
+The command uses the current directory as the repository context, starts a local
+LiteLLM proxy, and launches the installed Codex interactive UI against that proxy.
+The proxy is unauthenticated because it binds to localhost and never contacts an
+upstream model or database. Use `--server-only` when another client will connect
+manually.
+
+```bash
+uv run cagentrix opencode
+uv run cagentrix claude
+uv run cagentrix codex --port 4010
+uv run cagentrix codex --server-only --port 4051
+uv run cagentrix codex --dry-run
+uv run cagentrix --help
+```
+
+Use the printed `/v1` API base in the selected coding agent:
+
+| Profile | Protocol | Default endpoint | Default port |
+| --- | --- | --- | --- |
+| `codex` | OpenAI Responses | `/v1/responses` | `4010` |
+| `opencode` | OpenAI Chat Completions | `/v1/chat/completions` | `4011` |
+| `claude` | Anthropic Messages | `/v1/messages` | `4012` |
+
+The server-side model names are `cagentrix-codex`, `cagentrix-opencode`, and
+`cagentrix-claude`. Codex is displayed as `gpt-5.6-luna` in its UI, while
+OpenCode and Claude use generated local provider entries so neither client
+contacts a real model catalog.
+
+## Profiles and rules
+
+Built-in profiles live in `src/cagentrix/profiles/builtin/*.toml`. A project can
+override a built-in profile with `.cagentrix/agents/<agent>.toml`. A new agent can be
+defined with that one file if it supplies `[agent]`, `[client]`, `[tools]`, and
+`[session]` sections. The loader does not require Python changes for a new protocol
+profile as long as LiteLLM supports that protocol. `[client]` controls the executable,
+optional UI-only `model`, argument templates, API-base environment variable, generated
+config type, and child environment values. Templates support `{api_base}`,
+`{server_url}`, `{model}`, `{client_model}`, `{context_window}`,
+`{auto_compact_token_limit}`, and `{root}`. The Codex profile starts
+the UI as `gpt-5.6-luna` while its actual LiteLLM model and handler remain
+`cagentrix-codex`; the alias never contacts a real model.
+`[agent].context_window` and `[agent].auto_compact_token_limit` are data fields, so
+the same sizing policy can be audited or overridden without changing Python code.
+
+OpenCode receives a temporary `XDG_CONFIG_HOME` containing a local
+`@ai-sdk/openai-compatible` provider and model entry. Claude receives a temporary
+fake API key, a custom model picker entry, and a base URL without `/v1` because
+Claude Code appends `/v1/messages` itself. These generated client settings are
+removed when Cagentrix exits and do not overwrite project or user config files.
+
+The single command policy and the busy-loop text are
+`src/cagentrix/profiles/builtin/readonly_rules.toml`. It is separate from Python so
+it can be audited and extended. A project can replace or extend a rule set with
+`.cagentrix/readonly_rules.toml`, or set `agent.rules_file` to another relative file
+under `.cagentrix/`.
+
+The dedicated command generator only renders validated `find`, `sed`, `rg`, and
+`grep` templates against the current repository. It never accepts an arbitrary shell
+string, rejects write/exec flags, and keeps paths repository-relative. The default
+templates perform real reads such as `find .`, `sed -n ... README.md`,
+`rg --files ... .`, and `rg ... 'Cagentrix|cagentrix' .`. Occasional preambles are
+also data-driven from the same rule file and include the exact rendered command, so
+the UI can show both the planning text and the real shell invocation.
+Profile tool matching decides which client-declared function tools are eligible;
+write, patch, arbitrary shell, and unknown tool names are not eligible. Native
+Responses `custom` tools are dropped; native `shell` tools without a name are
+normalized to `shell` and still must match a profile shell rule. The installed
+coding-agent executable is resolved from `PATH` and common Nix profile/store
+locations for automatic UI launch.
+
+A minimal custom profile looks like this:
+
+```toml
+[agent]
+name = "my-agent"
+protocol = "chat_completions"
+model = "cagentrix-my-agent"
+use_chat_completions_api = false
+default_port = 4013
+rule_set = "default"
+
+[client]
+command = "my-agent"
+args = ["--base-url", "{api_base}", "--model", "{model}"]
+base_url_env = "OPENAI_BASE_URL"
+api_key_env = "OPENAI_API_KEY"
+
+[tools]
+allowed_patterns = ["(?i)^(exec_command|read_file)$"]
+shell_patterns = ["(?i)^exec_command$"]
+
+[tools.parameter_fields]
+command = ["command", "cmd"]
+path = ["path", "file_path"]
+pattern = ["pattern", "query"]
+limit = ["limit", "max_results"]
+
+[session]
+max_sessions = 128
+max_events = 32
+inference_delay_seconds = 0.75
+```
+
+## Development
+
+```bash
+uv sync
+uv run ruff check .
+uv run pytest
+```
+
+LiteLLM `>=1.80.0` is required because Cagentrix's Responses profile uses the
+official `use_chat_completions_api` bridge. `cagentrix codex --dry-run` verifies the
+installed version before emitting a config with that flag. The proxy config registers
+`cagentrix.provider.litellm_handler.cagentrix_handler` through LiteLLM's documented
+`custom_provider_map` and deliberately leaves `master_key` unset, so no database is
+needed for local calls.
+
+Known limitations are intentional: one tool call per response, no parallel tool
+calls, no real model calls, bounded in-memory session counters, and no support for
+arbitrary Responses `custom` tools. The Codex profile advertises a generated
+`258400`-token local model catalog and asks Codex to compact at `220000` reported input
+tokens, leaving room for output and protocol overhead. Each response also has a
+data-driven `0.75` second inference delay; this keeps the intentionally endless loop
+visibly active without turning the client and proxy into a busy spin. The handler
+keeps only the initial prompt and recent protocol items for its own decision logic and
+does not repeatedly serialize the entire history just to report bounded usage. It
+uses the provider identity `Cagentrix` and disables Codex `remote_compaction_v2`, so
+Codex performs local compaction and continues with a fresh bounded context instead
+of attempting an upstream remote compact task. The handler also recognizes explicit
+compaction requests and returns a bounded stop message for clients that expose that
+operation through the normal chat bridge.
+
+LiteLLM's protocol transformations
+can also vary by release, so the proxy-level smoke tests are the source of truth for
+the installed version. In LiteLLM 1.94.x, the official Responses
+`use_chat_completions_api` streaming bridge may include an empty `message` placeholder
+alongside the single `function_call` in `response.completed`; this does not create an
+additional tool call, and non-streaming Responses responses are normalized to one
+output item. Claude Code currently appends `/v1/messages` to
+`ANTHROPIC_BASE_URL`, so its profile intentionally injects the server root rather
+than the printed `/v1` API base. OpenCode and Claude can also issue a short initial
+request without tools; the director returns a protocol-correct stop response for
+that request, then resumes the read-only loop once the client declares its tools.

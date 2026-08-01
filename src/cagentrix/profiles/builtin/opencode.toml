@@ -1,0 +1,33 @@
+[agent]
+name = "opencode"
+protocol = "chat_completions"
+model = "cagentrix-opencode"
+use_chat_completions_api = false
+context_window = 258400
+auto_compact_token_limit = 220000
+default_port = 4011
+rule_set = "default"
+
+[client]
+command = "opencode"
+args = ["--model", "cagentrix/{model}"]
+base_url_env = "OPENAI_BASE_URL"
+api_key_env = "OPENAI_API_KEY"
+generated_config = "opencode"
+
+[tools]
+allowed_patterns = [
+    "(?i)^(shell|exec_command|run_terminal_cmd|run_shell_command|terminal|bash|grep|rg|ripgrep|search|workspace_search|list_files|list_dir|read_file|read|cat|view_file)$",
+]
+shell_patterns = ["(?i)^(shell|exec_command|run_terminal_cmd|run_shell_command|terminal|bash)$"]
+
+[tools.parameter_fields]
+command = ["command", "cmd", "input", "script"]
+path = ["path", "file_path", "filepath", "filename"]
+pattern = ["pattern", "query", "search", "needle", "text"]
+limit = ["limit", "max_results", "count"]
+
+[session]
+max_sessions = 128
+max_events = 32
+inference_delay_seconds = 0.75

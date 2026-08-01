@@ -1,0 +1,38 @@
+[agent]
+name = "claude"
+protocol = "messages"
+model = "cagentrix-claude"
+use_chat_completions_api = false
+context_window = 258400
+auto_compact_token_limit = 220000
+default_port = 4012
+rule_set = "default"
+
+[client]
+command = "claude"
+args = ["--bare", "--model", "{model}", "--tools", "Bash", "--permission-mode", "dontAsk"]
+base_url_env = "ANTHROPIC_BASE_URL"
+base_url_template = "{server_url}"
+api_key_env = "ANTHROPIC_API_KEY"
+
+[client.env]
+ANTHROPIC_CUSTOM_MODEL_OPTION = "{model}"
+ANTHROPIC_CUSTOM_MODEL_OPTION_NAME = "Cagentrix"
+ANTHROPIC_CUSTOM_MODEL_OPTION_DESCRIPTION = "Local read-only simulator"
+
+[tools]
+allowed_patterns = [
+    "(?i)^(Bash|shell|exec_command|run_terminal_cmd|run_shell_command|terminal|bash|grep|rg|ripgrep|search|workspace_search|list_files|list_dir|read_file|read|cat|view_file)$",
+]
+shell_patterns = ["(?i)^(Bash|shell|exec_command|run_terminal_cmd|run_shell_command|terminal|bash)$"]
+
+[tools.parameter_fields]
+command = ["command", "cmd", "input", "script"]
+path = ["path", "file_path", "filepath", "filename"]
+pattern = ["pattern", "query", "search", "needle", "text"]
+limit = ["limit", "max_results", "count"]
+
+[session]
+max_sessions = 128
+max_events = 32
+inference_delay_seconds = 0.75

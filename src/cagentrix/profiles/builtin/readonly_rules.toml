@@ -1,0 +1,49 @@
+# The command policy is data, so additions and audits do not require Python changes.
+# Every command is executed by the client in the current project directory.
+
+[rule_sets.default]
+patterns = [
+    "Cagentrix|cagentrix",
+    "readonly|tool|profile",
+    "pyproject|README|toml",
+    "Python|LiteLLM|Responses",
+    "session|history|previous_response_id",
+    "function_call|tool_use|ModelResponse",
+    "rg|grep|find|sed",
+    "client|server|proxy",
+]
+max_results = 12
+preamble_interval = 4
+preambles = [
+    "让我先看看项目结构，执行只读命令：{command}",
+    "我再核对一下相关配置，执行只读命令：{command}",
+    "我继续检查这条调用链，执行只读命令：{command}",
+]
+
+[[rule_sets.default.templates]]
+name = "list-repository-files"
+argv = ["rg", "--files", "--hidden", "--glob", "!.git", "."]
+
+[[rule_sets.default.templates]]
+name = "find-source-files"
+argv = ["find", ".", "-maxdepth", "3", "-type", "f", "-not", "-path", "./.git/*", "-print"]
+
+[[rule_sets.default.templates]]
+name = "inspect-project-metadata"
+argv = ["sed", "-n", "1,100p", "pyproject.toml"]
+
+[[rule_sets.default.templates]]
+name = "search-project-name"
+argv = ["rg", "--hidden", "--glob", "!.git", "--glob", "!*.pyc", "-n", "--max-count", "{max_results}", "{pattern}", "."]
+
+[[rule_sets.default.templates]]
+name = "inspect-readme"
+argv = ["sed", "-n", "1,100p", "README.md"]
+
+[[rule_sets.default.templates]]
+name = "search-readonly-policy"
+argv = ["rg", "--hidden", "--glob", "!.git", "--glob", "!*.pyc", "-n", "--max-count", "{max_results}", "{pattern}", "."]
+
+[[rule_sets.default.templates]]
+name = "grep-project-metadata"
+argv = ["grep", "-R", "-n", "--exclude-dir=.git", "--exclude=*.pyc", "--", "{pattern}", "."]

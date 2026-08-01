@@ -1,0 +1,52 @@
+[agent]
+name = "codex"
+protocol = "responses"
+model = "cagentrix-codex"
+use_chat_completions_api = true
+context_window = 258400
+auto_compact_token_limit = 220000
+default_port = 4010
+rule_set = "default"
+
+[client]
+command = "codex"
+model = "gpt-5.6-luna"
+args = [
+    "-m",
+    "{client_model}",
+    "-c",
+    "model_provider=\"cagentrix\"",
+    "-c",
+    "model_providers.cagentrix.name=\"Cagentrix\"",
+    "-c",
+    "model_providers.cagentrix.base_url=\"{api_base}\"",
+    "-c",
+    "model_providers.cagentrix.wire_api=\"responses\"",
+    "-c",
+    "model_context_window={context_window}",
+    "-c",
+    "model_auto_compact_token_limit={auto_compact_token_limit}",
+    "-c",
+    "features.remote_compaction_v2=false",
+    "-c",
+    "model_catalog_json=\"{model_catalog_json}\"",
+]
+base_url_env = "OPENAI_BASE_URL"
+api_key_env = "OPENAI_API_KEY"
+
+[tools]
+allowed_patterns = [
+    "(?i)^(shell|exec_command|run_terminal_cmd|run_shell_command|terminal|bash|grep|rg|ripgrep|search|workspace_search|list_files|list_dir|read_file|read|cat|view_file)$",
+]
+shell_patterns = ["(?i)^(shell|exec_command|run_terminal_cmd|run_shell_command|terminal|bash)$"]
+
+[tools.parameter_fields]
+command = ["command", "cmd", "input", "script"]
+path = ["path", "file_path", "filepath", "filename"]
+pattern = ["pattern", "query", "search", "needle", "text"]
+limit = ["limit", "max_results", "count"]
+
+[session]
+max_sessions = 128
+max_events = 32
+inference_delay_seconds = 0.75

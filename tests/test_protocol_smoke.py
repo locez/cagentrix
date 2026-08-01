@@ -152,3 +152,47 @@ def test_responses_stream_emits_tool_completion(running_proxy: tuple[str, str]) 
     function_calls = [item for item in completed["output"] if item["type"] == "function_call"]
     assert len(function_calls) == 1
     assert function_calls[0]["name"] == "exec_command"
+
+
+@pytest.mark.parametrize("running_proxy", ["claude"], indirect=True)
+def test_messages_stream_preserves_preamble_before_tool_use(
+    running_proxy: tuple[str, str],
+) -> None:
+    api_base, _ = running_proxy
+    schema = {
+        "type": "object",
+        "properties": {"command": {"type": "string"}},
+    }
+    events = _post_stream(
+        f"{api_base}/messages",
+        {
+            "model": "cagentrix-claude",
+            "max_tokens": 128,
+            "stream": True,
+            "messages": [{"role": "user", "content": "inspect"}],
+            "tools": [{"name": "Bash", "input_schema": schema}],
+        },
+    )
+
+    text_blocks = [
+        event["content_block"]
+        for event in events
+        if event.get("type") == "content_block_start"
+        and event.get("content_block", {}).get("type") == "text"
+    ]
+    tool_blocks = [
+        event["content_block"]
+        for event in events
+        if event.get("type") == "content_block_start"
+        and event.get("content_block", {}).get("type") == "tool_use"
+    ]
+    assert text_blocks and text_blocks[0]["text"] == ""
+    text_deltas = [
+        event["delta"]["text"]
+        for event in events
+        if event.get("type") == "content_block_delta"
+        and event.get("delta", {}).get("type") == "text_delta"
+    ]
+    assert text_deltas and text_deltas[0]
+    assert len(tool_blocks) == 1
+    assert tool_blocks[0]["name"] == "Bash"

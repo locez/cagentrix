@@ -347,8 +347,24 @@ class CagentrixHandler(CustomLLM):
             return
         call = decision.tool_call
         arguments = json.dumps(call.arguments, separators=(",", ":"), sort_keys=True)
+        if decision.preamble:
+            yield ModelResponseStream(
+                id=response_id,
+                object="chat.completion.chunk",
+                created=int(time.time()),
+                model=self.profile.model,
+                choices=[
+                    {
+                        "index": 0,
+                        "delta": {
+                            "role": "assistant",
+                            "content": decision.preamble,
+                        },
+                        "finish_reason": None,
+                    }
+                ],
+            )
         delta: dict[str, Any] = {
-            "role": "assistant",
             "tool_calls": [
                 {
                     "index": 0,
@@ -358,8 +374,6 @@ class CagentrixHandler(CustomLLM):
                 }
             ],
         }
-        if decision.preamble:
-            delta["content"] = decision.preamble
         yield ModelResponseStream(
             id=response_id,
             object="chat.completion.chunk",

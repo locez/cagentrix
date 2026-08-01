@@ -89,20 +89,22 @@ def test_sync_async_and_streaming_handler_paths() -> None:
     sync_chunks = list(handler.streaming(**kwargs))
 
     assert len(async_response.model_dump()["choices"][0]["message"]["tool_calls"]) == 1
-    assert len(async_chunks) == 1
-    assert len(sync_chunks) == 1
+    assert len(async_chunks) == 2
+    assert len(sync_chunks) == 2
     async_data = async_chunks[0].model_dump()
     sync_data = sync_chunks[0].model_dump()
     assert async_data["choices"][0]["delta"]["content"]
     assert sync_data["choices"][0]["delta"]["content"]
-    async_tool_use = async_data["choices"][0]["delta"]["tool_calls"][0]
-    sync_tool_use = sync_data["choices"][0]["delta"]["tool_calls"][0]
+    async_tool_data = async_chunks[1].model_dump()
+    sync_tool_data = sync_chunks[1].model_dump()
+    async_tool_use = async_tool_data["choices"][0]["delta"]["tool_calls"][0]
+    sync_tool_use = sync_tool_data["choices"][0]["delta"]["tool_calls"][0]
     assert async_tool_use["function"]["name"] == "exec_command"
     assert sync_tool_use["function"]["name"] == "exec_command"
     command = json.loads(async_tool_use["function"]["arguments"])["command"]
     assert command.startswith(("find ", "rg ", "grep ", "sed "))
     assert " | " in command
-    assert async_data["usage"]["prompt_tokens"] > 0
+    assert async_tool_data["usage"]["prompt_tokens"] > 0
 
 
 def test_provider_tool_result_advances_generator_and_usage_is_nonzero() -> None:

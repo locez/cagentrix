@@ -27,6 +27,11 @@ uv run cagentrix codex --dry-run
 uv run cagentrix --help
 ```
 
+If a default port is already occupied by an older proxy, startup fails clearly;
+stop that process or select another port with `--port`.
+The launcher also cleans up its client and LiteLLM process groups on normal exit,
+Ctrl-C, `SIGTERM`, and `SIGHUP`.
+
 Use the printed `/v1` API base in the selected coding agent:
 
 | Profile | Protocol | Default endpoint | Default port | Native read-only policy |

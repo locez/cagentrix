@@ -1,5 +1,15 @@
 import json
+import os
+import signal
+import socket
+import subprocess
+import sys
+import time
 from pathlib import Path
+from urllib.error import URLError
+from urllib.request import urlopen
+
+import pytest
 
 from cagentrix.profiles.loader import load_profile
 from cagentrix.runtime.launcher import (
@@ -83,6 +93,63 @@ def test_launcher_can_render_client_command_before_start() -> None:
 
     assert launcher.info is None
     assert launcher.profile.client.command == "codex"
+
+
+def test_launcher_rejects_an_occupied_port() -> None:
+    profile = load_profile("claude", ROOT)
+    with socket.socket() as occupied:
+        occupied.bind(("127.0.0.1", 0))
+        port = int(occupied.getsockname()[1])
+        launcher = ProxyLauncher(profile, ROOT, "127.0.0.1", port)
+
+        with pytest.raises(RuntimeError, match="already in use"):
+            launcher.start()
+
+
+def test_cli_sigterm_releases_proxy_process_and_port() -> None:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = int(probe.getsockname()[1])
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "cagentrix.cli",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            "claude",
+            "--server-only",
+        ],
+        cwd=ROOT,
+        env=os.environ.copy(),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                raise AssertionError("Cagentrix exited before its proxy became ready")
+            try:
+                with urlopen(f"http://127.0.0.1:{port}/health/liveliness", timeout=1) as response:
+                    if 200 <= response.status < 300:
+                        break
+            except (OSError, URLError):
+                time.sleep(0.1)
+        else:
+            raise AssertionError("Cagentrix proxy did not become ready")
+
+        process.send_signal(signal.SIGTERM)
+        assert process.wait(timeout=15) == 128 + signal.SIGTERM
+        with socket.socket() as rebound:
+            rebound.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            rebound.bind(("127.0.0.1", port))
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=15)
 
 
 def test_installed_nix_clients_are_resolvable_without_path_aliases() -> None:

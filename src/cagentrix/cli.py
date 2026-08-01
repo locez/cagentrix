@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import shlex
+import signal
 import sys
 from pathlib import Path
 
@@ -71,6 +72,20 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         launcher = ProxyLauncher(profile, config.root, config.host, config.port)
         launcher.start()
+        termination_signals = [signal.SIGTERM]
+        sighup = getattr(signal, "SIGHUP", None)
+        if sighup is not None:
+            termination_signals.append(sighup)
+        previous_signals = {
+            signum: signal.getsignal(signum) for signum in termination_signals
+        }
+
+        def handle_sigterm(signum: int, _frame: object) -> None:
+            launcher.stop()
+            raise SystemExit(128 + signum)
+
+        for signum in termination_signals:
+            signal.signal(signum, handle_sigterm)
         try:
             launcher.wait_until_ready()
             if args.server_only:
@@ -81,6 +96,8 @@ def main(argv: list[str] | None = None) -> int:
         except KeyboardInterrupt:
             return 0
         finally:
+            for signum, handler in previous_signals.items():
+                signal.signal(signum, handler)
             launcher.stop()
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         print(f"cagentrix: {exc}", file=sys.stderr)

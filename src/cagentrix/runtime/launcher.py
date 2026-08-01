@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import atexit
 import os
 import re
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
@@ -134,12 +137,16 @@ class ProxyLauncher:
         self._model_catalog_path: Path | None = None
         self._client_config_dir: Path | None = None
         self._process: subprocess.Popen[bytes] | None = None
+        self._process_group: int | None = None
         self._client_process: subprocess.Popen[bytes] | None = None
+        self._client_process_group: int | None = None
+        self._exit_cleanup: Callable[[], None] | None = None
         self.info: LaunchInfo | None = None
 
     def start(self) -> LaunchInfo:
         if self._process is not None:
             raise RuntimeError("Cagentrix proxy is already running")
+        self._assert_port_available()
         self._temp_dir = Path(tempfile.mkdtemp(prefix="cagentrix-"))
         config_path = write_litellm_config(self._temp_dir, self.profile)
         api_base = f"http://{self.host}:{self.port}/v1"
@@ -178,8 +185,23 @@ class ProxyLauncher:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.STDOUT,
         )
+        self._process_group = self._process.pid
         self.info = LaunchInfo(self.host, self.port, self.profile, config_path)
+        self._register_exit_cleanup()
         return self.info
+
+    def _assert_port_available(self) -> None:
+        """Reject an occupied port before a stale proxy can satisfy readiness checks."""
+
+        family = socket.AF_INET6 if ":" in self.host else socket.AF_INET
+        try:
+            with socket.socket(family, socket.SOCK_STREAM) as probe:
+                probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                probe.bind((self.host, self.port))
+        except OSError as exc:
+            raise RuntimeError(
+                f"port {self.port} is already in use; stop the existing proxy or choose --port"
+            ) from exc
 
     def wait_until_ready(self, timeout: float = 20.0) -> None:
         """Wait until LiteLLM accepts requests, or fail with a useful error."""
@@ -196,11 +218,25 @@ class ProxyLauncher:
                 raise RuntimeError("LiteLLM proxy exited before becoming ready")
             try:
                 with urlopen(health_url, timeout=1) as response:
-                    if 200 <= response.status < 300:
-                        return
+                    ready = 200 <= response.status < 300
             except (OSError, URLError):
                 time.sleep(0.1)
+                continue
+            if process.poll() is not None:
+                raise RuntimeError("LiteLLM proxy exited before becoming ready")
+            if ready:
+                return
         raise RuntimeError(f"LiteLLM proxy did not become ready within {timeout:g} seconds")
+
+    def _register_exit_cleanup(self) -> None:
+        if self._exit_cleanup is not None:
+            return
+
+        def cleanup() -> None:
+            self.stop()
+
+        self._exit_cleanup = cleanup
+        atexit.register(cleanup)
 
     def client_argv(self) -> list[str]:
         if self.info is None:
@@ -242,12 +278,9 @@ class ProxyLauncher:
             env=environment,
             start_new_session=True,
         )
+        self._client_process_group = self._client_process.pid
         client_process = self._client_process
-        try:
-            return client_process.wait()
-        finally:
-            if client_process.poll() is not None:
-                self._client_process = None
+        return client_process.wait()
 
     def wait(self) -> int:
         if self._process is None:
@@ -255,12 +288,20 @@ class ProxyLauncher:
         return self._process.wait()
 
     def stop(self) -> None:
+        cleanup = self._exit_cleanup
+        self._exit_cleanup = None
+        if cleanup is not None:
+            atexit.unregister(cleanup)
         client_process = self._client_process
         self._client_process = None
-        self._terminate_process(client_process)
+        client_process_group = self._client_process_group
+        self._client_process_group = None
+        self._terminate_process(client_process, client_process_group)
         process = self._process
         self._process = None
-        self._terminate_process(process)
+        process_group = self._process_group
+        self._process_group = None
+        self._terminate_process(process, process_group)
         if self._temp_dir is not None:
             shutil.rmtree(self._temp_dir, ignore_errors=True)
             self._temp_dir = None
@@ -268,16 +309,40 @@ class ProxyLauncher:
         self._client_config_dir = None
 
     @staticmethod
-    def _terminate_process(process: subprocess.Popen[bytes] | None) -> None:
-        if process is None or process.poll() is not None:
+    def _terminate_process(
+        process: subprocess.Popen[bytes] | None,
+        process_group: int | None,
+    ) -> None:
+        if process is None:
             return
+        if process_group is None:
+            try:
+                candidate = os.getpgid(process.pid)
+            except ProcessLookupError:
+                candidate = None
+            process_group = candidate if candidate == process.pid else None
         try:
-            os.killpg(process.pid, signal.SIGTERM)
+            if process_group is not None:
+                os.killpg(process_group, signal.SIGTERM)
             process.wait(timeout=5)
-        except (ProcessLookupError, subprocess.TimeoutExpired):
-            if process.poll() is None:
-                os.killpg(process.pid, signal.SIGKILL)
+        except subprocess.TimeoutExpired:
+            pass
+        except ProcessLookupError:
+            pass
+        if process_group is not None:
+            try:
+                os.killpg(process_group, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        if process.poll() is None:
+            try:
+                process.kill()
+            except ProcessLookupError:
+                return
+            try:
                 process.wait(timeout=5)
+            except (ProcessLookupError, subprocess.TimeoutExpired):
+                pass
 
     def __enter__(self) -> Self:
         self.start()
